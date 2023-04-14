@@ -104,44 +104,68 @@ void setup() {
 
   pinMode(BR_P, OUTPUT);
   pinMode(BR_D, OUTPUT);
-
 }
+
 double readValue;
-double x;
-double y;
 
 double slash_motor;
 double backslash_motor;
 
-void loop() {
+unsigned long lastSerialTime;
+unsigned long timeout = 1000;
+
+int x, y, z;
+uint8_t temp;
+
+uint8_t readSerial()
+{
   if(mySerial.available())
   {
-    readValue = mySerial.parseFloat();
+    return mySerial.read();
+  }
+}
 
-    x = floor(readValue);
-    y = floor(10000 * (readValue-x));
+void loop() {
+  temp = readSerial();
+  Serial.println(temp, HEX);
+  if(temp == 0xFF)
+  {
+    temp = readSerial();
+    Serial.println(temp, HEX);
+    if(temp == 0xFF)
+    {
+      mySerial.readBytes((byte *)&x, sizeof(x));
+      mySerial.readBytes((byte *)&y, sizeof(y));
+      mySerial.readBytes((byte *)&z, sizeof(z));
 
-    // change range to -1 ~ +1
-    if (x < X_default) x = -(X_default - x) / X_default;
-    else if (x > X_default) x = (x - X_default) / (1023 - X_default);
-    else x = 0;
+      Serial.print(x);
+      Serial.print(',');
+      Serial.print(y);
+      Serial.print(',');
+      Serial.println(z);
 
-    if (y < Y_default) y = -(Y_default - y) / Y_default;
-    else if (y > Y_default) y = (y - Y_default) / (1023 - Y_default);
-    else y = 0;
+      lastSerialTime = millis();
 
-    // Rotate
-    slash_motor = 0.7071 * (-x + y);
-    backslash_motor = 0.7071 * (x + y);
+      // change range to -1 ~ +1
+      if (x < X_default) x = -(X_default - x) / X_default;
+      else if (x > X_default) x = (x - X_default) / (1023 - X_default);
+      else x = 0;
 
-    Serial.print(slash_motor);
-    Serial.print(',');
-    Serial.println(backslash_motor);
+      if (y < Y_default) y = -(Y_default - y) / Y_default;
+      else if (y > Y_default) y = (y - Y_default) / (1023 - Y_default);
+      else y = 0;
 
-    setTwoMotorState(slash_motor, FR_P, FR_D, FR_F, BL_P, BL_D, BL_F);
-    setTwoMotorState(backslash_motor, FL_P, FL_D, FL_F, BR_P, BR_D, BR_F);
-    
+      // Rotate
+      slash_motor = 0.7071 * (-x + y);
+      backslash_motor = 0.7071 * (x + y);
+
+      setTwoMotorState(slash_motor, FR_P, FR_D, FR_F, BL_P, BL_D, BL_F);
+      setTwoMotorState(backslash_motor, FL_P, FL_D, FL_F, BR_P, BR_D, BR_F);
+    };
   }
 
-  
+  if (lastSerialTime + timeout < millis())
+  {
+      setSpeed(0);
+  } 
 }
