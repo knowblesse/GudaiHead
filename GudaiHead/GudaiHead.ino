@@ -18,6 +18,7 @@
 
 #define X_default 530
 #define Y_default 515
+#define Z_default 512
 
 #define speed_limit 0.1
 #define speed_max 1.4142
@@ -115,55 +116,76 @@ unsigned long lastSerialTime;
 unsigned long timeout = 1000;
 
 int x, y, z;
-uint8_t temp;
+int* remoteValue[3];
 
-uint8_t readSerial()
+void loop() 
 {
+  uint8_t temp;
+  uint8_t buffer[8];
   if(mySerial.available())
   {
-    return mySerial.read();
-  }
-}
-
-void loop() {
-  temp = readSerial();
-  Serial.println(temp, HEX);
-  if(temp == 0xFF)
-  {
-    temp = readSerial();
-    Serial.println(temp, HEX);
+    temp = mySerial.read(); // read first two byte and confirm 0xFF
     if(temp == 0xFF)
     {
-      mySerial.readBytes((byte *)&x, sizeof(x));
-      mySerial.readBytes((byte *)&y, sizeof(y));
-      mySerial.readBytes((byte *)&z, sizeof(z));
+      while(!mySerial.available()){}
+      temp = mySerial.read();
+      if(temp == 0xFF)
+      {
+        mySerial.readBytes(buffer, 8);
+        
+        if(buffer[6] == 0xFF & buffer[7] == 0xFF) // read last two byte and confirm 0xFF
+        {
+          // intact signal received.
+          lastSerialTime = millis();
 
-      Serial.print(x);
-      Serial.print(',');
-      Serial.print(y);
-      Serial.print(',');
-      Serial.println(z);
+          // parse values
+          x = buffer[0] | buffer[1]<<8;
+          y = buffer[2] | buffer[3]<<8;
+          z = buffer[4] | buffer[5]<<8;
 
-      lastSerialTime = millis();
+          Serial.print(x);
+          Serial.print(',');
+          Serial.print(y);
+          Serial.print(',');
+          Serial.print(z);
+          Serial.println("");
 
-      // change range to -1 ~ +1
-      if (x < X_default) x = -(X_default - x) / X_default;
-      else if (x > X_default) x = (x - X_default) / (1023 - X_default);
-      else x = 0;
+          // transform z to -1 ~ +1
+          if (z < Z_default) z = -(Z_default - z) / Z_default;
+          else if (z > Z_default) z = (z - Z_default) / (1023 - Z_default);
+          else z = 0;
 
-      if (y < Y_default) y = -(Y_default - y) / Y_default;
-      else if (y > Y_default) y = (y - Y_default) / (1023 - Y_default);
-      else y = 0;
+          // First check the rotation
+          if (abs(z) > speed_limit)
+          {
+            // rotate
+            setTwoMotorState(z, FR_P, FR_D, FR_F, BR_P, BR_D, BR_F);
+            setTwoMotorState(-z, FL_P, FL_D, FL_F, BL_P, BL_D, BL_F);
+            return;
+          }
 
-      // Rotate
-      slash_motor = 0.7071 * (-x + y);
-      backslash_motor = 0.7071 * (x + y);
+          // If no rotation is signaled, go movement
+          //change x, y range to -1 ~ +1
+          if (x < X_default) x = -(X_default - x) / X_default;
+          else if (x > X_default) x = (x - X_default) / (1023 - X_default);
+          else x = 0;
 
-      setTwoMotorState(slash_motor, FR_P, FR_D, FR_F, BL_P, BL_D, BL_F);
-      setTwoMotorState(backslash_motor, FL_P, FL_D, FL_F, BR_P, BR_D, BR_F);
-    };
+          if (y < Y_default) y = -(Y_default - y) / Y_default;
+          else if (y > Y_default) y = (y - Y_default) / (1023 - Y_default);
+          else y = 0;
+
+          // Rotate dimension
+          slash_motor = 0.7071 * (-x + y) / speed_max;
+          backslash_motor = 0.7071 * (x + y) / speed_max;
+
+          // Change motor state
+          setTwoMotorState(slash_motor, FR_P, FR_D, FR_F, BL_P, BL_D, BL_F);
+          setTwoMotorState(backslash_motor, FL_P, FL_D, FL_F, BR_P, BR_D, BR_F);
+
+        }
+      }
+    }
   }
-
   if (lastSerialTime + timeout < millis())
   {
       setSpeed(0);
