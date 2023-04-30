@@ -5,8 +5,9 @@
 void setup()
 {
   // Mega
-  Serial.begin(9600);
-  Serial1.begin(9600);
+  Serial.begin(9600); // comm. with PC
+  Serial1.begin(9600); // comm. with xbee
+  Serial.println("Start Remote Control");
 }
 
 int x;
@@ -34,7 +35,12 @@ void loop()
   {
     //Serial.println(Serial1.readString());
   }
-
+  Serial.print(x);
+  Serial.print(",");
+  Serial.print(y);
+  Serial.print(",");
+  Serial.println(z);
   delay(20);
 
 }
+
