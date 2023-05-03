@@ -20,8 +20,8 @@
 #define Y_default 515
 #define Z_default 512
 
-#define speed_limit 0.1
-#define speed_max 1.4142
+#define speed_limit 0.1d
+#define speed_max 1.4142d
 
 SoftwareSerial mySerial (2, 3); //rx2, tx3
 
@@ -72,15 +72,15 @@ void setTwoMotorState(double speed, int motor1P, int motor1D, bool motor1F, int 
   {
     digitalWrite(motor1D, motor1F);
     digitalWrite(motor2D, motor2F);
-    analogWrite(motor1P, round(speed / speed_max * 255));
-    analogWrite(motor2P, round(speed / speed_max * 255));
+    analogWrite(motor1P, 200);
+    analogWrite(motor2P, 200);
   }
   else if (speed < -speed_limit)
   {
     digitalWrite(motor1D, !motor1F);
     digitalWrite(motor2D, !motor2F);
-    analogWrite(motor1P, round(speed / (-speed_max) * 255));
-    analogWrite(motor2P, round(speed / (-speed_max) * 255));
+    analogWrite(motor1P, 200);
+    analogWrite(motor2P, 200);
   }
   else
   {
@@ -116,7 +116,7 @@ unsigned long lastSerialTime;
 unsigned long timeout = 1000;
 
 int x, y, z;
-int* remoteValue[3];
+double x_, y_, z_;
 
 void loop() 
 {
@@ -151,32 +151,32 @@ void loop()
           Serial.println("");
 
           // transform z to -1 ~ +1
-          if (z < Z_default) z = -(Z_default - z) / Z_default;
-          else if (z > Z_default) z = (z - Z_default) / (1023 - Z_default);
-          else z = 0;
+          if (z < Z_default) z_ = -(double)(Z_default - z) / (double)Z_default;
+          else if (z > Z_default) z_ = (double)(z - Z_default) / (double)(1023 - Z_default);
+          else z_ = 0;
 
           // First check the rotation
-          if (abs(z) > speed_limit)
+          if (abs(z_) > speed_limit)
           {
             // rotate
-            setTwoMotorState(z, FR_P, FR_D, FR_F, BR_P, BR_D, BR_F);
-            setTwoMotorState(-z, FL_P, FL_D, FL_F, BL_P, BL_D, BL_F);
+            setTwoMotorState(z_, FR_P, FR_D, FR_F, BR_P, BR_D, BR_F);
+            setTwoMotorState(-z_, FL_P, FL_D, FL_F, BL_P, BL_D, BL_F);
             return;
           }
 
           // If no rotation is signaled, go movement
           //change x, y range to -1 ~ +1
-          if (x < X_default) x = -(X_default - x) / X_default;
-          else if (x > X_default) x = (x - X_default) / (1023 - X_default);
-          else x = 0;
+          if (x < X_default) x_ = -(double)(X_default - x) / (double)X_default;
+          else if (x > X_default) x_ = (double)(x - X_default) / (double)(1023 - X_default);
+          else x_ = 0;
 
-          if (y < Y_default) y = -(Y_default - y) / Y_default;
-          else if (y > Y_default) y = (y - Y_default) / (1023 - Y_default);
-          else y = 0;
+          if (y < Y_default) y_ = -(double)(Y_default - y) / (double)Y_default;
+          else if (y > Y_default) y_ = (double)(y - Y_default) / (double)(1023 - Y_default);
+          else y_ = 0;
 
           // Rotate dimension
-          slash_motor = 0.7071 * (-x + y) / speed_max;
-          backslash_motor = 0.7071 * (x + y) / speed_max;
+          slash_motor = 0.7071 * (-x_ + y_) / speed_max;
+          backslash_motor = 0.7071 * (x_ + y_) / speed_max;
 
           // Change motor state
           setTwoMotorState(slash_motor, FR_P, FR_D, FR_F, BL_P, BL_D, BL_F);
