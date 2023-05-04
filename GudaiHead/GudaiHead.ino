@@ -23,7 +23,7 @@
 #define speed_limit 0.1d
 #define speed_max 1.4142d
 
-SoftwareSerial mySerial (2, 3); //rx2, tx3
+SoftwareSerial mySerial (3, 2); //rx2, tx3
 
 void goUp()
 {
