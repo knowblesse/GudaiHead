@@ -1,16 +1,16 @@
-%% TrackingDataAnalysis
+%% TrackingDataAnalysis_Train
 addpath('..');
 
 %% Constants
 FPS = 60;
 LPS = 5;
-BASEPATH = 'D:\Data_fib\Robot Predator\Rtest1';
+BASEPATH = 'D:\Data_fib\Robot Predator\Rtest3';
 
 %% Batch
 OUT = table(zeros(10,3), zeros(10,3), zeros(10,3), 'VariableNames', ["AverageVelocity", "CenterPercent", "BetweenDistance"]);
 for session = 1 : 10
-    
-    folderPath = fullfile(BASEPATH, strcat('R', num2str(session)));
+
+    folderPath = fullfile(BASEPATH, strcat('R', num2str(session + 10)));
 
     %% Read tracking.csv
     trackingData = readmatrix(glob(folderPath, '.*.csv', true));
@@ -72,7 +72,7 @@ for session = 1 : 10
     betweenDistance_noHead1 = mean(sum((trackingData(R_noHead1Index, 2:3) - trackingData(R_noHead1Index, 4:5)).^2, 2) .^0.5);
     betweenDistance_yesHead = mean(sum((trackingData(R_yesHeadIndex, 2:3) - trackingData(R_yesHeadIndex, 4:5)).^2, 2) .^0.5);
     betweenDistance_noHead2 = mean(sum((trackingData(R_noHead2Index, 2:3) - trackingData(R_noHead2Index, 4:5)).^2, 2) .^0.5);
-
+    
     OUT.BetweenDistance(session,:) = [betweenDistance_noHead1, betweenDistance_yesHead, betweenDistance_noHead2];
 end
 
