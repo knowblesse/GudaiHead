@@ -4,76 +4,114 @@ addpath('..');
 %% Constants
 FPS = 60;
 LPS = 5;
-BASEPATH = 'D:\Data_fib\Robot Predator\Rtest3';
+BASEPATH = 'D:\Data_fib\Robot Predator\Rtest1';
+px2cm = 0.2171;
 
 %% Batch
-OUT = table(zeros(10,3), zeros(10,3), zeros(10,3), 'VariableNames', ["AverageVelocity", "CenterPercent", "BetweenDistance"]);
+
+out_velocity = zeros(10, 6);
+out_center_time = zeros(10, 6);
+out_mean_btw_distance = zeros(10, 6);
+out_median_btw_distance = zeros(10, 6);
+
 for session = 1 : 10
 
-    folderPath = fullfile(BASEPATH, strcat('R', num2str(session + 10)));
+    folderPath = fullfile(BASEPATH, strcat('R', num2str(session,'%02d')));
 
-    %% Read tracking.csv
-    trackingData = readmatrix(glob(folderPath, '.*.csv', true));
+    %% Read tracking.csv for robot location and buttered.csv for fine rat location
+    trackingData = readmatrix(glob(folderPath, 'tracking.csv', true));
+    butterData = readmatrix(glob(folderPath, '.*buttered.csv', true), 'Delimiter','\t');
+
+    if size(trackingData,1) ~= size(butterData,1)
+        error('tracking and butter data size mismatch');
+    end
+
+    %% Calculate timestamp
     timestamp = trackingData(:,1) / FPS; % assume constant frame rate
 
     %% Read time.txt
     % 1: End of Hab
-    % 2: End of No Head Robot
+    % 2: End of def1
     % 3: End of pause1
-    % 4: End of Head Robot
-    % 5: End of pause2
-    timeData = readlines(glob(folderPath, '.*.txt', true));
+    % 4: End of inf
+    % 5: End of def2
+    timeData = readlines(glob(folderPath, 'time.txt', true));
     timeData = timeData(~arrayfun(@(X) X=="", timeData)); % remove empty lines
-    separator = seconds(duration(timeData, 'InputFormat', 'mm:ss'));
-    if numel(separator) > 5 % in some cases, like R3, entries contain more than 5 labels.
-        % R3. 
-        endOfLastNoHeadTime = separator(6); % if the label is more than 5, use the last label as the end of the experiment.
-    else
-        endOfLastNoHeadTime = timestamp(end); % else, use the last tracking time.
+    separator_raw = seconds(duration(timeData, 'InputFormat', 'mm:ss'));
+    
+    %% Set Time Range (tr)
+    timeRange.hab = [0, separator_raw(1)];
+    timeRange.def1 = [separator_raw(1), separator_raw(2)];
+    timeRange.p1 = [separator_raw(2), separator_raw(3)];
+    timeRange.inf = [separator_raw(3), separator_raw(4)];
+    timeRange.p2 = [separator_raw(4), separator_raw(5)];
+    timeRange.def2 = [separator_raw(5), timestamp(end)];
+    
+    %% Exception Handling
+    if contains(BASEPATH, 'Rtest1') && contains(BASEPATH, 'R03')
+        % Test1 - R3 has two Inflated Head phase
+        timeRange.def_robot2 = [separator_raw(7), separator_raw(8)];
     end
-    separator = [separator(1:5); endOfLastNoHeadTime];
-    timestampIndex = [1; arrayfun(@(x) find(timestamp>=x, 1), separator)];
 
-    %% Process index
-    R_noHead1Index = timestampIndex(2):timestampIndex(3);
-    R_yesHeadIndex = timestampIndex(4):timestampIndex(5);
-    R_noHead2Index = timestampIndex(6):timestampIndex(7);
+    %% Get Data Indices
+    names = string(fieldnames(timeRange))';
+    for name = names
+        dataIndex.(name) = arrayfun(@(x) find(timestamp>=x, 1), timeRange.(name));
+    end
 
-    %% Process Time
-    totalTime_noHead1 = separator(2) - separator(1);
-    totalTime_yesHead = separator(4) - separator(3);
-    totalTime_noHead2 = separator(6) - separator(5);
+    %% Calculate Times
+    totalTime.hab = diff(timeRange.hab);
+    totalTime.def1 = diff(timeRange.def1);
+    totalTime.p1 = diff(timeRange.p1);
+    totalTime.inf = diff(timeRange.inf);
+    totalTime.p2 = diff(timeRange.p2);
+    totalTime.def2 = diff(timeRange.def2);
     
-    %% Calculate Center time
-    centerTime_noHead1 = sum(isCenter(trackingData(R_noHead1Index, 4:5))) * (1/LPS);
-    centerTime_yesHead = sum(isCenter(trackingData(R_yesHeadIndex, 4:5))) * (1/LPS);
-    centerTime_noHead2 = sum(isCenter(trackingData(R_noHead2Index, 4:5))) * (1/LPS);
+    %% TODO: If video is concatenated, ignore big excursion
 
-    OUT.CenterPercent(session,:) = [...
-        centerTime_noHead1 / totalTime_noHead1,...
-        centerTime_yesHead / totalTime_yesHead,...
-        centerTime_noHead2 / totalTime_noHead2...
-        ] * 100;
+    %% Calculate results
+    eventList = ["hab", "def1", "p1", "inf", "p2", "def2"];
 
-    %% Calculate mean velocity
-    distance_noHead1 = sum(sum(diff(trackingData(R_noHead1Index, 4:5)).^2,2).^0.5);
+    for i = 1 : 6
+        event = eventList(i);
+        ratPosition = [...
+            movmean(butterData(dataIndex.(event)(1): dataIndex.(event)(2),3),5),...
+            movmean(butterData(dataIndex.(event)(1): dataIndex.(event)(2),2),5)]; % x, y
+        robotPosition = [...
+            movmean(trackingData(dataIndex.(event)(1): dataIndex.(event)(2),2),10),...
+            movmean(trackingData(dataIndex.(event)(1): dataIndex.(event)(2),3),10)]; % x, y
 
-    distance_yesHead = sum(sum(diff(trackingData(R_yesHeadIndex, 4:5)).^2,2).^0.5);
 
-    distance_noHead2 = sum(sum(diff(trackingData(R_noHead2Index, 4:5)).^2,2).^0.5);
+        clf;
+        imshow(apparatus.image);
+        hold on;
+        plot(ratPosition(:,1), ratPosition(:,2), 'LineWidth',1, 'Color', 'w');
+        plot(robotPosition(:,1), robotPosition(:,2), 'LineWidth',1, 'Color', 'r');
 
-    OUT.AverageVelocity(session,:) = [...
-        distance_noHead1 / totalTime_noHead1,...
-        distance_yesHead / totalTime_yesHead,...
-        distance_noHead2 / totalTime_noHead2...
-        ];
 
-    %% Calculate mean between distance
-    betweenDistance_noHead1 = mean(sum((trackingData(R_noHead1Index, 2:3) - trackingData(R_noHead1Index, 4:5)).^2, 2) .^0.5);
-    betweenDistance_yesHead = mean(sum((trackingData(R_yesHeadIndex, 2:3) - trackingData(R_yesHeadIndex, 4:5)).^2, 2) .^0.5);
-    betweenDistance_noHead2 = mean(sum((trackingData(R_noHead2Index, 2:3) - trackingData(R_noHead2Index, 4:5)).^2, 2) .^0.5);
+
+        ratPosition = [...
+            movmean(butterData(:,3),5),...
+            movmean(butterData(:,2),5)]; % x, y
+        robotPosition = [...
+            movmean(trackingData(:,2),10),...
+            movmean(trackingData(:,3),10)]; % x, y
     
-    OUT.BetweenDistance(session,:) = [betweenDistance_noHead1, betweenDistance_yesHead, betweenDistance_noHead2];
+        % Velocity
+        out_velocity(session, i) = sum(sum(diff(ratPosition).^2,2).^0.5) / totalTime.(event) * px2cm;
+        
+        % Center time
+        out_center_time(session,i) = mean(isCenter(ratPosition) .* (1/LPS));
+
+        % Calculate between distance
+        out_mean_btw_distance(session,i) = mean(sum((ratPosition - robotPosition).^2, 2) .^0.5);
+        out_median_btw_distance(session,i) = median(sum((ratPosition - robotPosition).^2, 2) .^0.5);
+    
+        % Minimum range to escape
+
+        % approach
+    end
+
 end
 
 
