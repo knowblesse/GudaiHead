@@ -66,20 +66,57 @@ for i = 1 : 7
 end
 
 %% Using apparatus.edge, generate apparatus.corner
-corner = false([size(apparatus.edge,[1,2]),7]);
+corner = false([size(apparatus.center,[1,2]),7]);
 for i = 1 : 7    
-    row_start = find(apparatus.edge(:,round(size(apparatus.edge,2)/2),i) == 1, 1);
-    row_end = find(apparatus.edge(:,round(size(apparatus.edge,2)/2),i) == 1, 1, 'last');
-    col_start = find(apparatus.edge(round(size(apparatus.edge,1)/2),:,i) == 1, 1);
-    col_end = find(apparatus.edge(round(size(apparatus.edge,1)/2),:,i) == 1, 1, 'last');
+    row_start = find(apparatus.center(:,round(size(apparatus.center,2)/2),i) == 1, 1);
+    row_end = find(apparatus.center(:,round(size(apparatus.center,2)/2),i) == 1, 1, 'last');
+    col_start = find(apparatus.center(round(size(apparatus.center,1)/2),:,i) == 1, 1);
+    col_end = find(apparatus.center(round(size(apparatus.center,1)/2),:,i) == 1, 1, 'last');
 
-    corner(row_start:row_start+140, col_start:col_start+140, i) = true;
-    corner(row_end-140:row_end, col_start:col_start+140, i) = true;
-    corner(row_start:row_start+140, col_end-140:col_end, i) = true;
-    corner(row_end-140:row_end, col_end-140:col_end, i) = true;
+    corner(row_start-70:row_start+70, col_start-70:col_start+70, i) = true;
+    corner(row_end-70:row_end+70, col_start-70:col_start+70, i) = true;
+    corner(row_start-70:row_start+70, col_end-70:col_end+70, i) = true;
+    corner(row_end-70:row_end+70, col_end-70:col_end+70, i) = true;
 end
 
 apparatus.corner = corner;
+
+corner = false([size(apparatus.center,[1,2]),7]);
+for i = 1 : 7    
+    row_start = find(apparatus.center(:,round(size(apparatus.center,2)/2),i) == 1, 1);
+    row_end = find(apparatus.center(:,round(size(apparatus.center,2)/2),i) == 1, 1, 'last');
+    col_start = find(apparatus.center(round(size(apparatus.center,1)/2),:,i) == 1, 1);
+    col_end = find(apparatus.center(round(size(apparatus.center,1)/2),:,i) == 1, 1, 'last');
+
+    corner(row_start-70:row_start, col_start-70:col_start, i) = true;
+    corner(row_end:row_end+70, col_start-70:col_start, i) = true;
+    corner(row_start-70:row_start, col_end:col_end+70, i) = true;
+    corner(row_end:row_end+70, col_end:col_end+70, i) = true;
+
+%     corner(row_start-70:row_start+70, col_start-70:col_start, i) = true;
+%     corner(row_end-70:row_end+70, col_start-70:col_start, i) = true;
+%     corner(row_start-70:row_start+70, col_end:col_end+70, i) = true;
+%     corner(row_end-70:row_end+70, col_end:col_end+70, i) = true;
+% 
+%     corner(row_start-70:row_start, col_start:col_start+70, i) = true;
+%     corner(row_end:row_end+70, col_start:col_start+70, i) = true;
+%     corner(row_start-70:row_start, col_end-70:col_end, i) = true;
+%     corner(row_end:row_end+70, col_end-70:col_end, i) = true;
+
+end
+
+apparatus.corner = corner;
+figure();
+for i = 1 : 7
+    clf;
+    imshow(apparatus.image(:,:,:,i));
+    hold on;
+    a = imshow(apparatus.center(:,:,i));
+    b = imshow(apparatus.corner(:,:,i));
+    a.AlphaData = 0.2;
+    b.AlphaData = 0.2;
+    pause(1);
+end
 
     
 

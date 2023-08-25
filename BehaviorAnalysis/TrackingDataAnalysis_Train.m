@@ -6,10 +6,10 @@ load("apparatus.mat");
 FPS = 60;
 LPS = 5;
 BASEPATH = 'D:\Data_fib\Robot Predator\Rtest1';
+SUBJADD = 0; % for R11-20, use value of 10. 
 px2cm = 0.2171;
 
 %% Batch
-
 out_velocity = zeros(10, 6);
 out_center_time = zeros(10, 6);
 out_corner_time = zeros(10, 6);
@@ -17,11 +17,14 @@ out_mean_btw_distance = zeros(10, 6);
 out_median_btw_distance = zeros(10, 6);
 out_freezing = zeros(10,6);
 out_min_run = zeros(10,6);
+out_view_ratio = zeros(10, 6);
+
 
 for session = 1 : 10
-
-    folderPath = fullfile(BASEPATH, strcat('R', num2str(session,'%02d')));
-
+    
+    folderPath = fullfile(BASEPATH, strcat('R', num2str(session + SUBJADD,'%02d')));
+    
+    fprintf('\n%d\n', session);
     %% Read tracking.csv for robot location and buttered.csv for fine rat location
     trackingData = readmatrix(glob(folderPath, 'tracking.csv', true));
     butterData = readmatrix(glob(folderPath, '.*buttered.csv', true), 'Delimiter','\t');
@@ -51,12 +54,75 @@ for session = 1 : 10
     timeRange.inf = [separator_raw(3), separator_raw(4)];
     timeRange.p2 = [separator_raw(4), separator_raw(5)];
     timeRange.def2 = [separator_raw(5), timestamp(end)];
+
+    %% Positions 
+    % [Caution] concatenated video only affect velocity.
+    %   So this part must preceed the exception handling
+    ratPosition_all = [...
+        movmean(butterData(:,3),5),...
+        movmean(butterData(:,2),5)]; % x, y
+    robotPosition_all = [...
+        movmean(trackingData(:,2),10),...
+        movmean(trackingData(:,3),10)]; % x, y
+    
+    %% Degree
+    prev_head_direction = butterData(1,4);
+    degree_offset_value = zeros(size(butterData, 1),1);
+    for bd = 2 : size(butterData,1)
+        if abs(butterData(bd,4) - prev_head_direction) > 180
+            if butterData(bd,4) > prev_head_direction
+                degree_offset_value(bd:end) = degree_offset_value(bd:end) - 360;
+            else
+                degree_offset_value(bd:end) = degree_offset_value(bd:end) + 360;
+            end
+        end
+        prev_head_direction = butterData(bd,4);
+    end
+
+    ratHeadDegree_all = movmean(butterData(:, 4) + degree_offset_value, 5);
     
     %% Exception Handling
-    if contains(BASEPATH, 'Rtest1') && contains(BASEPATH, 'R03')
+    if contains(folderPath, 'Rtest1') && contains(folderPath, 'R03')
         % Test1 - R3 has two Inflated Head phase
-        timeRange.def_robot2 = [separator_raw(7), separator_raw(8)];
+        timeRange.inf = [separator_raw(5), separator_raw(6)];
+        timeRange.def2 = [separator_raw(7), separator_raw(8)];
     end
+    velocityIntegrity_all = false(size(ratPosition_all,1),1); % if true, don't use the distance
+    if contains(folderPath, 'Rtest3') && (...
+            contains(folderPath, 'R11') ||...
+            contains(folderPath, 'R16') ||...
+            contains(folderPath, 'R18') ||...
+            contains(folderPath, 'R20') )
+        % Test3 - R11, 16,  : concatenated two video
+        [~, clippedPart] = max(diff(butterData(:,2)));
+        ratPosition_all = [...
+            [...
+                movmean(butterData(1:clippedPart,3),5);...
+                movmean(butterData(clippedPart+1:end,3),5)...
+            ],...
+            [...
+                movmean(butterData(1:clippedPart,2),5);...
+                movmean(butterData(clippedPart+1:end,2),5)
+            ]];
+
+        ratHeadDegree_all = [...
+                movmean(butterData(:, 4) + degree_offset_value,5);...
+                movmean(butterData(:, 4) + degree_offset_value,5)...
+            ];
+
+        robotPosition_all = [...
+            [...
+                movmean(trackingData(1:clippedPart,3),10);...
+                movmean(trackingData(clippedPart+1:end,3),10)...
+            ],...
+            [...
+                movmean(trackingData(1:clippedPart,2),10);...
+                movmean(trackingData(clippedPart+1:end,2),10)
+            ]];
+        velocityIntegrity_all(clippedPart) = true;
+    end
+
+    ratHeadDegree_all = rem(ratHeadDegree_all + 36000, 360);
 
     %% Get Data Indices
     names = string(fieldnames(timeRange))';
@@ -71,50 +137,30 @@ for session = 1 : 10
     totalTime.inf = diff(timeRange.inf);
     totalTime.p2 = diff(timeRange.p2);
     totalTime.def2 = diff(timeRange.def2);
-    
-    %% TODO: If video is concatenated, ignore big excursion
 
     %% Calculate results
     eventList = ["hab", "def1", "p1", "inf", "p2", "def2"];
 
     for i = 1 : 6
         event = eventList(i);
-        ratPosition = [...
-            movmean(butterData(dataIndex.(event)(1): dataIndex.(event)(2),3),5),...
-            movmean(butterData(dataIndex.(event)(1): dataIndex.(event)(2),2),5)]; % x, y
-        robotPosition = [...
-            movmean(trackingData(dataIndex.(event)(1): dataIndex.(event)(2),2),10),...
-            movmean(trackingData(dataIndex.(event)(1): dataIndex.(event)(2),3),10)]; % x, y
+        ratPosition = ratPosition_all(dataIndex.(event)(1): dataIndex.(event)(2), :); % x, y
+        ratHeadDegree = ratHeadDegree_all(dataIndex.(event)(1): dataIndex.(event)(2), :); % x, y
+        robotPosition = robotPosition_all(dataIndex.(event)(1): dataIndex.(event)(2), :); % x, y
         timestamp_event = timestamp(dataIndex.(event)(1): dataIndex.(event)(2));
+        velocityIntegrity = velocityIntegrity_all(dataIndex.(event)(1): dataIndex.(event)(2));
         
-%         %% all
-%         ratPosition = [...
-%             movmean(butterData(:,3),5),...
-%             movmean(butterData(:,2),5)]; % x, y
-%         robotPosition = [...
-%             movmean(trackingData(:,2),10),...
-%             movmean(trackingData(:,3),10)]; % x, y
-%         timestamp_event = timestamp;
-%         
-%         %% remove p1 and p2
-%         a = 1 : size(butterData,1);
-%         a([dataIndex.p1(1):dataIndex.p1(2), dataIndex.p2(1):dataIndex.p2(2)]) = [];
-% 
-%         ratPosition = [...
-%             movmean(butterData(a,3),5),...
-%             movmean(butterData(a,2),5)]; % x, y
-%         robotPosition = [...
-%             movmean(trackingData(a,2),10),...
-%             movmean(trackingData(a,3),10)]; % x, y
-    
         % Velocity
         deltaPosition = sum(diff(ratPosition).^2,2).^0.5;
+        if (any(velocityIntegrity))
+            idx = find(velocityIntegrity);
+            deltaPosition(idx) = deltaPosition(idx-1);
+        end
         out_velocity(session, i) = sum(deltaPosition) / totalTime.(event) * px2cm;
         
         % Center Ratio
         output_ = false(size(ratPosition,1),1);
         for pIdx = 1 : size(ratPosition,1)
-            output_(pIdx) = apparatus.edge(round(ratPosition(pIdx,2)), round(ratPosition(pIdx,1)),bgNumber);
+            output_(pIdx) = apparatus.center(round(ratPosition(pIdx,2)), round(ratPosition(pIdx,1)),bgNumber);
         end
         out_center_time(session,i) = sum(output_) / numel(output_);
 
@@ -147,17 +193,14 @@ for session = 1 : 10
         freezing_timestamp = timestamp_event(windowSize+1 :end) - windowSeconds/2;
         out_freezing(session,i) = sum(isFreezing) / numel(isFreezing);
 
-%         plot(freezing_timestamp, isFreezing*5, 'LineWidth',1);
-%         hold on;
-%         plot(freezing_timestamp, meanVelocity, 'LineWidth',1);
+        if false % [DEBUG] draw freezing graph
+            figure();
+            plot(freezing_timestamp, isFreezing*5, 'LineWidth',1);
+            hold on;
+            plot(freezing_timestamp, meanVelocity, 'LineWidth',1);
+        end
 
-        
-
-        % Minimum range to escape
-        %clf;
-        %plot(deltaPosition)
-        %hold on;
-        %plot(btwDistance)
+        %% Minimum range to escape
         vals = [];
         pIdx = 1;
         while pIdx < size(deltaPosition,1)
@@ -170,15 +213,80 @@ for session = 1 : 10
             end
             pIdx = pIdx + 1;
         end
-        %v = scatter(vals, deltaPosition(vals), 'filled', 'r');
         minVals = [];
         for val = vals
             minVals = [minVals, min(btwDistance(max(val-3-LPS, 1) : val-3, 1))];
         end
         out_min_run(session, i) = mean(minVals);
 
-        % Head Degree
+        if false % [DEBUG] Draw sudden run aways
+            figure();
+            plot(deltaPosition);
+            hold on;
+            plot(btwDistance)
+            v = scatter(vals, deltaPosition(vals), 'filled', 'r');
+        end
+
+        %% isViewing
+        % If the rat is too close to the robot (for example 30cm), 
+        % the head direction tend to misclassified due to the robot image.
+        % Therefore, isView value is only calculated when the distance
+        % between the robot and the rat is at least 30cm. 
+        ratViewRange = ratHeadDegree + [-30, + 30];
+        fromRatToRobot = robotPosition - ratPosition;
+        isViewing = false(size(ratPosition,1),1);
+        isViewTotalCount = 0;
+        for pIdx = 1 : size(ratPosition,1)
+            if false % [DEBUG] show direction plot
+                figure();
+                imshow(apparatus.image);
+                hold on;
+                scatter(ratPosition(pIdx,1), ratPosition(pIdx,2), 'filled', 'g');
+                plot(...
+                    [ratPosition(pIdx,1), ratPosition(pIdx,1) + 30*cosd(ratHeadDegree(pIdx))],...
+                    [ratPosition(pIdx,2), ratPosition(pIdx,2) + 30*sind(ratHeadDegree(pIdx))], 'r')
+                scatter(robotPosition(pIdx,1), robotPosition(pIdx,2), 'filled', 'r');
+                plot(...
+                    [ratPosition(pIdx,1), ratPosition(pIdx,1) + fromRatToRobot(pIdx,1)],...
+                    [ratPosition(pIdx,2), ratPosition(pIdx,2) + fromRatToRobot(pIdx,2)], '--');
+                title(string(duration(seconds(timestamp_event(pIdx)), 'Format', 'mm:ss')));
+            end
+
+            if btwDistance(pIdx) >= 20
+                isViewTotalCount = isViewTotalCount + 1;
+                relativeRobotAngle = atan2d(fromRatToRobot(pIdx, 2), fromRatToRobot(pIdx, 1));
+                if relativeRobotAngle < 0
+                    relativeRobotAngle = relativeRobotAngle + 360;
+                end
+            
+                if relativeRobotAngle > ratViewRange(pIdx, 2)
+                    if relativeRobotAngle > ratViewRange(pIdx, 1) + 360
+                        inFOV = true;
+                    else
+                        inFOV = false;
+                    end
+                else
+                    if relativeRobotAngle > ratViewRange(pIdx, 1)
+                        inFOV = true;
+                    else
+                        inFOV = false;
+                    end
+                end
+
+                isViewing(pIdx) = inFOV;
+            end
+
+        end
+
+        out_view_ratio(session, i) = sum(isViewing) / isViewTotalCount;
+        fprintf('%s : %d / %d\n', eventList(i), sum(isViewing), isViewTotalCount);
 
     end
 
 end
+
+out_center_time = out_center_time * 100;
+out_corner_time = out_corner_time * 100;
+out_freezing = out_freezing * 100;
+out_view_ratio = out_view_ratio * 100;
+

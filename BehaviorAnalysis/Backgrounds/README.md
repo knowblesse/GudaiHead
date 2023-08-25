@@ -11,10 +11,11 @@ bg7.png : Test5
 ## Comments
 - A bg does not move during an experiment. (manually checked)
 
-## 15cm Line
+## How to draw 15cm Line (for edge and corders)
+**15cm in pixels**
 - 75px from left wall
 - 67px from top wall
 - 70px from right wall
 - 67px from bottom wall
-
-=> 70px
+=> 70px = 15cm.
+Therefore, mark edge of the apparatus and use 70px border to mark the edge
