@@ -60,6 +60,7 @@ def getFrame(label_index, isShiftPressed):
     current_frame = int(data[label_index,0])
     vid.set(cv.CAP_PROP_POS_FRAMES, current_frame)
     ret, image = vid.read()
+    lastFrame = image
     if not ret:
         raise(BaseException('Can not read the frame'))
     cv.putText(image, f'{current_frame} - {label_index/data.shape[0]*100:.2f}% - Excursion {np.sum(possibleExcursion)} ({np.sum(possibleExcursion_robot)}, {np.sum(possibleExcursion_rat)})', [0,int(vid.get(cv.CAP_PROP_FRAME_HEIGHT)-40)],fontFace=cv.FONT_HERSHEY_DUPLEX, fontScale=0.8, color=[255,255,255], thickness=2)
