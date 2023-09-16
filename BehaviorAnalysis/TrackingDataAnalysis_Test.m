@@ -5,8 +5,8 @@ load("apparatus.mat");
 %% Constants
 FPS = 60;
 LPS = 5;
-BASEPATH = 'D:\Data_fib\Robot Predator\Rtest4';
-SUBJADD = 10; % for R11-20, use value of 10. 
+BASEPATH = 'D:\Data_fib\Robot Predator\Rtest2';
+SUBJADD = 0; % for R11-20, use value of 10. 
 px2cm = 0.2171;
 % Test2
 G1 = [1, 3, 4, 5, 6];
@@ -298,24 +298,25 @@ btwD_def = cell2mat(histo_box(G1));
 btwD_inf = cell2mat(histo_box(G2));
 
 loadxkcd;
-figure('Position', [-751, 307, 415, 420]);
-histogram(btwD_def,0:2:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.bright_red, 'LineWidth',1);
+figure('Position', [-1474, 77, 628, 196]);
+histogram(btwD_def,0:4:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.bright_red, 'LineWidth',1);
 hold on;
-histogram(btwD_inf,0:2:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.dark_red, 'LineWidth',1);
-legend({"Deflated", "Inflated"})
+histogram(btwD_inf,0:4:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.dark_red, 'LineWidth',1);
+legend({"Deflated", "Inflated"}, 'Location', 'northwest')
 xlabel('Distance (cm)');
 ylabel('Count');
 title('Head');
-ylim([0, 600]);
+ylim([0, 1000]);
 set(gca, 'FontName', 'Noto Sans');
 
-figure('Position', [-751, 307, 415, 420]);
-histogram(btwD_def,0:2:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.bright_blue, 'LineWidth',1);
+figure('Position', [-1474, 77, 416, 196]);
+clf;
+histogram(btwD_def,0:4:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.bright_blue, 'LineWidth',1);
 hold on;
-histogram(btwD_inf,0:2:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.dark_blue, 'LineWidth',1);
+histogram(btwD_inf,0:4:200, 'DisplayStyle', 'stairs', 'EdgeColor', xkcd.dark_blue, 'LineWidth',1);
 legend({"Deflated", "Inflated"})
 xlabel('Distance (cm)');
 ylabel('Count');
 title('Body');
-ylim([0, 600]);
+ylim([0, 1000]);
 set(gca, 'FontName', 'Noto Sans');
