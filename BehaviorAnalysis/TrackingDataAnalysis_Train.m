@@ -10,14 +10,14 @@ SUBJADD = 0; % for R11-20, use value of 10.
 px2cm = 0.2171;
 
 %% Batch
-out_velocity = zeros(10, 6);
-out_center_time = zeros(10, 6);
-out_corner_time = zeros(10, 6);
-out_mean_btw_distance = zeros(10, 6);
-out_median_btw_distance = zeros(10, 6);
-out_freezing = zeros(10,6);
-out_min_run = zeros(10,6);
-out_view_ratio = zeros(10, 6);
+out_velocity = zeros(10, 10);
+out_center_time = zeros(10, 10);
+out_corner_time = zeros(10, 10);
+out_mean_btw_distance = zeros(10, 10);
+out_median_btw_distance = zeros(10, 10);
+out_freezing = zeros(10,10);
+out_min_run = zeros(10,10);
+out_view_ratio = zeros(10, 10);
 
 
 for session = 1 : 10
@@ -54,6 +54,12 @@ for session = 1 : 10
     timeRange.inf = [separator_raw(3), separator_raw(4)];
     timeRange.p2 = [separator_raw(4), separator_raw(5)];
     timeRange.def2 = [separator_raw(5), timestamp(end)];
+
+    % Additional Front/End data
+    timeRange.def1A = [separator_raw(1), round(separator_raw(1) + (separator_raw(2) - separator_raw(1))/2)];
+    timeRange.def1B = [round(separator_raw(1) + (separator_raw(2) - separator_raw(1))/2), separator_raw(2)];
+    timeRange.infA = [separator_raw(3), round(separator_raw(3) + (separator_raw(4) - separator_raw(3))/2)];
+    timeRange.infB = [round(separator_raw(3) + (separator_raw(4) - separator_raw(3))/2), separator_raw(4)];
 
     %% Positions 
     % [Caution] concatenated video only affect velocity.
@@ -138,10 +144,16 @@ for session = 1 : 10
     totalTime.p2 = diff(timeRange.p2);
     totalTime.def2 = diff(timeRange.def2);
 
-    %% Calculate results
-    eventList = ["hab", "def1", "p1", "inf", "p2", "def2"];
+    % Additional Front/End data
+    totalTime.def1A = diff(timeRange.def1A);
+    totalTime.def1B = diff(timeRange.def1B);
+    totalTime.infA = diff(timeRange.infA);
+    totalTime.infB = diff(timeRange.infB);
 
-    for i = 1 : 6
+    %% Calculate results
+    eventList = ["hab", "def1", "p1", "inf", "p2", "def2", "def1A", "def1B", "infA", "infB"];
+
+    for i = 1 : 10
         event = eventList(i);
         ratPosition = ratPosition_all(dataIndex.(event)(1): dataIndex.(event)(2), :); % x, y
         ratHeadDegree = ratHeadDegree_all(dataIndex.(event)(1): dataIndex.(event)(2), :); % x, y
