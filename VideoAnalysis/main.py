@@ -8,7 +8,18 @@ from pathlib import Path
 from tkinter.filedialog import askopenfilename
 from tqdm import tqdm
 import time
+import teleknock
 
+def __main__():
+    rrr = RobotRatRolling()
+    rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
+    rrr.global_mask[217:217 + 797, 335:335 + 1185] = 255
+    rrr.getMedianFrame()
+    rrr.run(12)
+    rrr.save()
+
+    kn = teleknock.teleknock()
+    kn.sendMsg("DONE")
 
 class RobotRatRolling():
     def __init__(self, path=[]):
@@ -296,25 +307,5 @@ class RobotRatRolling():
 
 
 
-rrr = RobotRatRolling()
-rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
-rrr.global_mask[217:217+797, 335:335+1185] = 255
-rrr.getMedianFrame()
-rrr.run(12)
-rrr.save()
 
-import requests
-requests.get(r"https://api.telegram.org/bot5269105245:AAE9AnATgUo2swh4Tyr4Fk7wdSVz3SqBS_4/sendMessage?chat_id=5520161508&text=DONE")
-#rrr.getMedianFrame()
 
-# for i in np.arange(10000, 60000, 60):
-#     rrr.vc.set(cv.CAP_PROP_POS_FRAMES, int(i))
-#     ret, image = rrr.vc.read()
-#     image = cv.bitwise_and(image, image, mask=rrr.global_mask)
-#     try:
-#         drawImage = rrr.findBlob(image)
-#     except:
-#         continue
-#     cv.imshow('Test', drawImage)
-#     cv.waitKey(1)
-# cv.destroyWindow('Test')
