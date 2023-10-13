@@ -9,17 +9,34 @@ from tkinter.filedialog import askopenfilename
 from tqdm import tqdm
 import time
 import teleknock
+from scipy.stats import norm
 
-def __main__():
-    rrr = RobotRatRolling()
-    rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
-    rrr.global_mask[217:217 + 797, 335:335 + 1185] = 255
-    rrr.getMedianFrame()
-    rrr.run(12)
-    rrr.save()
+def paintROI(image):
+    """
+    left paint : Select
+    right paint : Deselect
+    mouse wheel : change brush size
+    """
+    image_orig = image.copy()
 
-    kn = teleknock.teleknock()
-    kn.sendMsg("DONE")
+    cv.namedWindow('Paint ROI')
+    cv.setMouseCallback('Paint ROI', func, obj)
+
+    def mouseCallBack(event, x, y, f, obj):
+        if event == cv.EVENT_LBUTTONDOWN:
+        elif event == cv.EVENT_LBUTTONUP:
+        elif event == cv.EVENT_RBUTTONDOWN:
+        elif event == cv.EVENT_RBUTTONUP:
+        else event == EVENT_MOUSEWHEEL 
+
+
+
+    zoom_position = cv.selectROI('Select Robot', image)
+    cv.destroyWindow('Select Robot')
+
+
+
+
 
 class RobotRatRolling():
     def __init__(self, path=[]):
@@ -28,7 +45,6 @@ class RobotRatRolling():
             self.video_path = path
         else:
             self.video_path = Path(askopenfilename())
-        #self.video_path = Path(r"D:\Data_fib\Robot Predator\R9\2023-05-04 10-01-12_r9.mkv")
         self.vc = cv.VideoCapture(str(self.video_path.absolute()))
 
         # Get Video infor
@@ -70,7 +86,16 @@ class RobotRatRolling():
         # cv.waitKey()
         # cv.destroyWindow('Test')
 
-
+    def selectColors(self):
+        image = self.frame_bucket[int(self.frame_bucket.shape[0]/2), :, :, :]
+        zoom_position = cv.selectROI('Select Robot', image)
+        cv.destroyWindow('Select Robot')
+        self.robot_color = self.getColorRange(cv.resize(image[
+                                                   zoom_position[1]:zoom_position[1] + zoom_position[3],
+                                                   zoom_position[0]:zoom_position[0] + zoom_position[2],
+                                                   :], [zoom_position[3] * 3, zoom_position[2] * 3]))
+        image = cv.absdiff(image, self.medianFrame)
+        self.rat_color = self.getColorRange(image)
     def getKernel(self, size):
         size = int(size)
         return cv.getStructuringElement(cv.MORPH_ELLIPSE, (size, size),
@@ -98,8 +123,8 @@ class RobotRatRolling():
         r_std = np.std(targetImage[:, :, 2])
         r_mean = np.mean(targetImage[:, :, 2])
 
-        lower_end = np.array([b_mean-b_std, g_mean-g_std, r_mean-r_std])
-        higher_end = np.array([b_mean + b_std, g_mean + g_std, r_mean + r_std])
+        lower_end = np.array([b_mean - 1.5*b_std, g_mean - 1.5*g_std, r_mean - 1.5*r_std])
+        higher_end = np.array([b_mean + 1.5*b_std, g_mean + 1.5*g_std, r_mean + 1.5*r_std])
 
         return (lower_end, higher_end)
 
@@ -114,15 +139,18 @@ class RobotRatRolling():
         """
         errorFlag = False
 
+        """
+        For the robot, find the yellow parts and mean the location
+        For the rat, find the white spot, use maximum likelihood method (incl. distance), 
+        """
+
         ########################################################
         #                Find Robot Blob                       #
         ########################################################
 
         # 1. Find robot by color (yellow)
 
-        #robot_color = self.getColorRange(image)
-        robot_color = (np.array([ 30.67028917, 23.71939694, 73.73209726]), np.array([ 74.79411761,  69.96964261, 132.15762025]))
-        robot_mask = cv.inRange(image, robot_color[0], robot_color[1])
+        robot_mask = cv.inRange(image, self.robot_color[0], self.robot_color[1])
 
         robot_image = cv.bitwise_and(image, image, mask=robot_mask)
         robot_gray = cv.cvtColor(robot_image, cv.COLOR_RGB2GRAY)
@@ -171,10 +199,7 @@ class RobotRatRolling():
         # 1. Find rat by color (white)
         # Make Diff
         image = cv.absdiff(image, self.medianFrame)
-        #rat_color = self.getColorRange(image)
-        #rat_color = (np.array([161, 230, 188]), np.array([198, 255, 223]))
-        rat_color = (np.array([84.23251103, 109.43732959, 106.46874666]), np.array([255.0, 255.0, 255.0]))
-        rat_mask = cv.inRange(image, rat_color[0], rat_color[1])
+        rat_mask = cv.inRange(image, self.rat_color[0], self.rat_color[1])
 
         rat_image = cv.bitwise_and(image, image, mask=rat_mask)
         rat_gray = cv.cvtColor(rat_image, cv.COLOR_RGB2GRAY)
@@ -188,12 +213,47 @@ class RobotRatRolling():
             largestContourIndex = np.argsort(np.array([cv.contourArea(cnt) for cnt in cnts]))[-1:(-1 - 3):-1]
             largestContours = [cnts[i] for i in largestContourIndex]
 
-            if cv.contourArea(largestContours[0]) > 40:
-                rat_center = np.round(cv.minEnclosingCircle(largestContours[0])[0]).astype(int)
-                #drawImage = cv.circle(drawImage, rat_center, 30, (0, 255, 0), 3)
-            else:
-                rat_center = prevPoint[1]
-                errorFlag = True
+            centers = np.array([np.round(cv.minEnclosingCircle(cnt)[0]).astype(int) for cnt in largestContours])
+            area = np.array([cv.contourArea(cnt) for cnt in largestContours])
+            perimeter = np.array([cv.arcLength(cnt, closed=True) for cnt in largestContours])
+
+            animalSize = area
+            animalConvexity = area / np.array([cv.contourArea(cv.convexHull(cnt)) for cnt in largestContours])
+            animalCircularity = 4 * np.pi * area / (perimeter ** 2)
+
+            foregroundModel = {
+                'animalSize': {'median': 2048.25, 'sd': 445.6631035603015},
+                'animalConvexity': {'median': 0.8701496520482979, 'sd': 0.15930511168478506},
+                'animalCircularity': {'median': 0.4652859512418821, 'sd': 0.12903703356433005}
+            }
+
+            L_Size = np.max([
+                norm.cdf(animalSize + foregroundModel['animalSize']['sd'] * 0.1,
+                         foregroundModel['animalSize']['median'], foregroundModel['animalSize']['sd'])
+                - norm.cdf(animalSize - foregroundModel['animalSize']['sd'] * 0.1,
+                           foregroundModel['animalSize']['median'], foregroundModel['animalSize']['sd']),
+                1e-10 * np.ones(animalSize.shape)], axis=0)
+            L_Convexity = np.max([
+                norm.cdf(animalConvexity + foregroundModel['animalConvexity']['sd'] * 0.1,
+                         foregroundModel['animalConvexity']['median'],
+                         foregroundModel['animalConvexity']['sd'])
+                - norm.cdf(animalConvexity - foregroundModel['animalConvexity']['sd'] * 0.1,
+                           foregroundModel['animalConvexity']['median'],
+                           foregroundModel['animalConvexity']['sd']),
+                1e-10 * np.ones(animalConvexity.shape)], axis=0)
+            L_Circularity = np.max([
+                norm.cdf(animalCircularity + foregroundModel['animalCircularity']['sd'] * 0.1,
+                         foregroundModel['animalCircularity']['median'],
+                         foregroundModel['animalCircularity']['sd'])
+                - norm.cdf(animalCircularity - foregroundModel['animalCircularity']['sd'] * 0.1,
+                           foregroundModel['animalCircularity']['median'],
+                           foregroundModel['animalCircularity']['sd']),
+                1e-10 * np.ones(animalCircularity.shape)], axis=0)
+
+            likelihoods = np.log(L_Size) + np.log(L_Convexity) + np.log(L_Circularity)
+
+            rat_center = centers[np.argmax(likelihoods)]
+
         else:
             rat_center = prevPoint[1]
             errorFlag = True
@@ -307,5 +367,14 @@ class RobotRatRolling():
 
 
 
-
+if __name__ == "__main__":
+    rrr = RobotRatRolling()
+    rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
+    rrr.global_mask[150:150 + 800, 335:335 + 1185] = 255
+    rrr.getMedianFrame()
+    rrr.selectColors()
+    rrr.run(12)
+    rrr.save()
+    kn = teleknock.teleknock()
+    kn.sendMsg("DONE")
 
