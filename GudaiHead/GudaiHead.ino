@@ -2,7 +2,7 @@
 
 #define FL_P 6 // Front Left PWM
 #define FL_D 13 // Front Left Direction
-#define FL_F false // Front Left front direction
+#define FL_F true // Front Left front direction
 
 #define FR_P 5
 #define FR_D 12
@@ -10,7 +10,7 @@
 
 #define BL_P 11
 #define BL_D 7
-#define BL_F true
+#define BL_F false
 
 #define BR_P 10
 #define BR_D 8
