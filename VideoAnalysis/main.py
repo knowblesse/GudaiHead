@@ -1,7 +1,6 @@
 import queue
 from queue import Queue
 from threading import Thread
-from tkinter import W
 import cv2 as cv
 import numpy as np
 from pathlib import Path
@@ -10,32 +9,6 @@ from tqdm import tqdm
 import time
 import teleknock
 from scipy.stats import norm
-
-def paintROI(image):
-    """
-    left paint : Select
-    right paint : Deselect
-    mouse wheel : change brush size
-    """
-    image_orig = image.copy()
-
-    cv.namedWindow('Paint ROI')
-    cv.setMouseCallback('Paint ROI', func, obj)
-
-    def mouseCallBack(event, x, y, f, obj):
-        if event == cv.EVENT_LBUTTONDOWN:
-        elif event == cv.EVENT_LBUTTONUP:
-        elif event == cv.EVENT_RBUTTONDOWN:
-        elif event == cv.EVENT_RBUTTONUP:
-        else event == EVENT_MOUSEWHEEL 
-
-
-
-    zoom_position = cv.selectROI('Select Robot', image)
-    cv.destroyWindow('Select Robot')
-
-
-
 
 
 class RobotRatRolling():
@@ -55,6 +28,96 @@ class RobotRatRolling():
         self.frame_size = (self.frame_height, self.frame_width)
         #self.setGlobalMask()
 
+    def paintROI(self, image, initialState=False):
+        """
+        left paint : Select
+        right paint : Deselect
+        mouse wheel : change brush size
+        """
+        image_orig = image.copy()
+        height = image.shape[0]
+        width = image.shape[1]
+        mask = np.logical_or(np.zeros((height, width), dtype=bool), initialState)
+        state = {'button': 0, 'brushSize': 4, 'currentPosition': [0, 0]}  # 0: no button, 1: left, 2: right
+
+        def mouseCallBack(event, x, y, f, state):
+            if event == cv.EVENT_LBUTTONDOWN:
+                state['button'] = 1
+            elif event == cv.EVENT_MOUSEMOVE:
+                state['currentPosition'] = [x, y]  # for brush size box
+                if state['button'] == 1:
+                    mask[
+                    max(0, y - state['brushSize']):min(height, max(0, y + state['brushSize'])),
+                    max(0, x - state['brushSize']):min(width, max(0, x + state['brushSize']))] = True
+                elif state['button'] == 2:
+                    mask[
+                    max(0, y - state['brushSize']):min(height, y + state['brushSize']),
+                    max(0, x - state['brushSize']):min(width, x + state['brushSize'])] = False
+
+            elif event == cv.EVENT_LBUTTONUP:
+                state['button'] = 0
+            elif event == cv.EVENT_RBUTTONDOWN:
+                state['button'] = 2
+            elif event == cv.EVENT_RBUTTONUP:
+                state['button'] = 0
+            elif event == cv.EVENT_MOUSEWHEEL:
+                if f < 0:
+                    state['brushSize'] = state['brushSize'] + 1
+                else:
+                    state['brushSize'] = max(0, state['brushSize'] - 1)
+
+        cv.namedWindow('Paint ROI')
+        cv.setMouseCallback('Paint ROI', mouseCallBack, state)
+
+        key = -1
+        while key == -1:
+            image = image_orig.copy()
+            image[mask, 0] = np.round(image[mask, 0] * 0.9)
+            image[mask, 1] = np.round(image[mask, 1] * 0.9)
+            image[mask, 2] = 255
+            cv.rectangle(image,
+                         (state['currentPosition'][0] - state['brushSize'],
+                          state['currentPosition'][1] - state['brushSize']),
+                         (state['currentPosition'][0] + state['brushSize'],
+                          state['currentPosition'][1] + state['brushSize']),
+                         thickness=1,
+                         color=(0, 0, 0))
+            cv.imshow('Paint ROI', image)
+            key = cv.waitKey(1)
+        cv.destroyWindow('Paint ROI')
+        return mask
+
+    def concatImages(self, images, row=3, col=4):
+        MAX_LENGTH = 1000
+        # Check input data
+        if len(images) != row * col:
+            raise IndexError("Image number and row, col values do not match!")
+        for image in images:
+            if images[0].shape != image.shape:
+                raise IndexError("Image number and row, col values do not match!")
+
+        # Set resize factor
+        height = images[0].shape[0]
+        width = images[0].shape[1]
+
+        outputHeight = height*row
+        outputWidth = width*col
+
+        zoomRatio = min(MAX_LENGTH / outputHeight, MAX_LENGTH / outputWidth)
+
+        height_resized = np.round(height * zoomRatio).astype(int)
+        width_resized = np.round(width * zoomRatio).astype(int)
+
+        outputHeight = height_resized*row
+        outputWidth = width_resized*col
+
+        outputImage = np.zeros((outputHeight, outputWidth,3), dtype=np.uint8)
+        iterImage = iter(images)
+        for c in range(col):
+            for r in range(row):
+                outputImage[height_resized*r:height_resized*(r+1), width_resized*c:width_resized*(c+1),:] = cv.resize(next(iterImage), (width_resized, height_resized))
+        return outputImage, (height_resized, width_resized)
+
     def setGlobalMask(self):
         ret, image = self.vc.read()
         mask_position = cv.selectROI('Select ROI', image)
@@ -62,14 +125,11 @@ class RobotRatRolling():
         self.global_mask = np.zeros(self.frame_size, dtype=np.uint8)
         self.global_mask[mask_position[1]:mask_position[1]+mask_position[3], mask_position[0]:mask_position[0]+mask_position[2]] = 255
 
-    def getMedianFrame(self, num_frame2use=100):
-        # Get median frame
+    def getMedianFrame(self, num_frame2use=20):
+        # Get frames
         self.frame_bucket = np.zeros((num_frame2use, self.frame_height, self.frame_width, 3), dtype=np.uint8)
-        current_header = 0
-        ret = False
-        queue = tqdm(np.round(np.linspace(int(self.num_frame/2), self.num_frame - 1000, num_frame2use)))
+        queue = tqdm(np.round(np.linspace(0, self.num_frame-10, num_frame2use)))
 
-        print(f'Starting background model building')
         for i, frame_number in enumerate(queue):
             self.vc.set(cv.CAP_PROP_POS_FRAMES, int(frame_number))
             ret, image = self.vc.read()
@@ -77,23 +137,67 @@ class RobotRatRolling():
             if not ret:
                 raise(BaseException(f'Can not retrieve frame # {frame_number}'))
             self.frame_bucket[i, :, :, :] = image
-        print('Background model building complete')
 
-        self.medianFrame = np.median(self.frame_bucket,axis=0).astype(np.uint8)
 
-        # Show median frame
-        # cv.imshow('Test', self.medianFrame)
-        # cv.waitKey()
-        # cv.destroyWindow('Test')
+        # Concat frame bucket into one big image
+        images = [self.frame_bucket[i, :, :, :] for i in range(num_frame2use)]
+        row = 4
+        col = 5
+        image, (height_resized, width_resized) = self.concatImages(images, row=row, col=col)
+
+        # Generate Background
+        """
+        - Logic
+        1. Show multiple frames in a 'one big image' by using `self.concatImages` function. <Select Frame>
+        2. Extra window shows the current background image. <Background>
+        3. If a user click a frame in the <Select Image> window, then another window is opened. <Select Background>
+        4. The user select part of the image where moving objects are located (ex. robot, rat).
+        5. When press space in <Select Background>, the frame without the selected part is registered as the background.
+        6.  
+        """
+
+        def mouseCallBack_select_frame(event, x, y, f, vars):
+            if event == cv.EVENT_LBUTTONUP:
+                # TODO : if paint ROI is already open, close it and reopen with the new image.
+                image = vars
+                selectedIndex = np.floor(y / height_resized).astype(int) + row * np.floor(x / width_resized).astype(int)
+                # TODO : Check if the mouse up point is out of range
+                mask = self.paintROI(self.frame_bucket[selectedIndex, :, :, :], initialState=False)
+
+                frame = self.frame_bucket[selectedIndex, :, :, :].copy().astype(float)
+                frame[mask,:] = np.nan
+                frame = np.expand_dims(frame, axis=0)
+                self.background = np.concatenate([self.background, frame], axis=0)
+                cv.imshow('Background', np.round(np.nanmedian(self.background, axis=0)).astype(np.uint8))
+
+
+        self.background = np.expand_dims(self.frame_bucket[int(num_frame2use/2), :, :, :],0) #using the middle frame as the initial background
+
+        cv.namedWindow('Select Frame')
+        cv.setMouseCallback('Select Frame', mouseCallBack_select_frame, image)
+        cv.imshow('Select Frame', image.astype(np.uint8))
+
+        cv.namedWindow('Background')
+        cv.imshow('Background', self.background[0,:,:,:])
+        key = -1
+        while key == -1:
+            cv.waitKey()
+        self.background = np.round(np.nanmedian(self.background, axis=0)).astype(np.uint8)
+        cv.destroyWindow('Select Frame')
+        cv.destroyWindow('Background')
 
     def selectColors(self):
         image = self.frame_bucket[int(self.frame_bucket.shape[0]/2), :, :, :]
+
+        # For Robot, zoom!
         zoom_position = cv.selectROI('Select Robot', image)
         cv.destroyWindow('Select Robot')
-        self.robot_color = self.getColorRange(cv.resize(image[
-                                                   zoom_position[1]:zoom_position[1] + zoom_position[3],
-                                                   zoom_position[0]:zoom_position[0] + zoom_position[2],
-                                                   :], [zoom_position[3] * 3, zoom_position[2] * 3]))
+        self.getColorRange(cv.resize(image[
+            zoom_position[1]:zoom_position[1] + zoom_position[3],
+            zoom_position[0]:zoom_position[0] + zoom_position[2],
+            :], [zoom_position[3] * 3, zoom_position[2] * 3]))
+
+        # For Rat
         image = cv.absdiff(image, self.medianFrame)
         self.rat_color = self.getColorRange(image)
     def getKernel(self, size):
@@ -112,19 +216,16 @@ class RobotRatRolling():
         return denoisedBinaryImage
 
     def getColorRange(self, image):
-        mask_position = cv.selectROI('Select ROI for color range extraction', image)
-        cv.destroyWindow('Select ROI for color range extraction')
-        targetImage = image[mask_position[1]:mask_position[1]+mask_position[3], mask_position[0]:mask_position[0]+mask_position[2], :]
+        mask = self.paintROI(image)
+        lower_end = np.round(
+            np.mean(image[mask,:],axis=0)
+            - np.std(image[mask, :], axis=0)
+        ).astype(np.uint8)
 
-        b_std = np.std(targetImage[:, :, 0])
-        b_mean = np.mean(targetImage[:, :, 0])
-        g_std = np.std(targetImage[:, :, 1])
-        g_mean = np.mean(targetImage[:, :, 1])
-        r_std = np.std(targetImage[:, :, 2])
-        r_mean = np.mean(targetImage[:, :, 2])
-
-        lower_end = np.array([b_mean - 1.5*b_std, g_mean - 1.5*g_std, r_mean - 1.5*r_std])
-        higher_end = np.array([b_mean + 1.5*b_std, g_mean + 1.5*g_std, r_mean + 1.5*r_std])
+        higher_end = lower_end = np.round(
+            np.mean(image[mask,:],axis=0)
+            + np.std(image[mask, :], axis=0)
+        ).astype(np.uint8)
 
         return (lower_end, higher_end)
 
