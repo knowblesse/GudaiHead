@@ -28,6 +28,8 @@ class RobotRatRolling():
         self.frame_size = (self.frame_height, self.frame_width)
         #self.setGlobalMask()
 
+        self.isPaintROIOpen = False
+
     def paintROI(self, image, initialState=False):
         """
         left paint : Select
@@ -67,8 +69,8 @@ class RobotRatRolling():
                     state['brushSize'] = max(0, state['brushSize'] - 1)
 
         cv.namedWindow('Paint ROI')
+        self.isPaintROIOpen = True
         cv.setMouseCallback('Paint ROI', mouseCallBack, state)
-
         key = -1
         while key == -1:
             image = image_orig.copy()
@@ -85,6 +87,7 @@ class RobotRatRolling():
             cv.imshow('Paint ROI', image)
             key = cv.waitKey(1)
         cv.destroyWindow('Paint ROI')
+        self.isPaintROIOpen = False
         return mask
 
     def concatImages(self, images, row=3, col=4):
@@ -140,10 +143,11 @@ class RobotRatRolling():
 
 
         # Concat frame bucket into one big image
-        images = [self.frame_bucket[i, :, :, :] for i in range(num_frame2use)]
+        frameSize = list(image.shape)
+        frameList = [self.frame_bucket[i, :, :, :] for i in range(num_frame2use)]
         row = 4
         col = 5
-        image, (height_resized, width_resized) = self.concatImages(images, row=row, col=col)
+        concatFrame, (height_resized, width_resized) = self.concatImages(frameList, row=row, col=col)
 
         # Generate Background
         """
@@ -158,8 +162,9 @@ class RobotRatRolling():
 
         def mouseCallBack_select_frame(event, x, y, f, vars):
             if event == cv.EVENT_LBUTTONUP:
-                # TODO : if paint ROI is already open, close it and reopen with the new image.
-                image = vars
+                if self.isPaintROIOpen:
+                    cv.destroyWindow('Paint ROI')
+                    return
                 selectedIndex = np.floor(y / height_resized).astype(int) + row * np.floor(x / width_resized).astype(int)
                 # TODO : Check if the mouse up point is out of range
                 mask = self.paintROI(self.frame_bucket[selectedIndex, :, :, :], initialState=False)
@@ -168,20 +173,26 @@ class RobotRatRolling():
                 frame[mask,:] = np.nan
                 frame = np.expand_dims(frame, axis=0)
                 self.background = np.concatenate([self.background, frame], axis=0)
-                cv.imshow('Background', np.round(np.nanmedian(self.background, axis=0)).astype(np.uint8))
+                if self.background.shape[0] >=2:
+                    if np.any(np.isnan(np.nanmedian(self.background, axis=0))): # if any pixel is all nan in all selected frame,
+                        redArray = np.zeros(frame.shape, dtype=np.uint8)
+                        redArray[0, np.all(np.isnan(self.background), axis=0)[:,:,0], 2] = 255
+                        cv.imshow('Background', np.round(np.nanmedian(np.concatenate([self.background, redArray], axis=0), axis=0)).astype(np.uint8))
+                    else:
+                        cv.imshow('Background', np.round(np.nanmedian(self.background, axis=0)).astype(np.uint8))
 
 
-        self.background = np.expand_dims(self.frame_bucket[int(num_frame2use/2), :, :, :],0) #using the middle frame as the initial background
+        self.background = np.empty([0]+frameSize)
 
         cv.namedWindow('Select Frame')
-        cv.setMouseCallback('Select Frame', mouseCallBack_select_frame, image)
-        cv.imshow('Select Frame', image.astype(np.uint8))
+        cv.setMouseCallback('Select Frame', mouseCallBack_select_frame)
+        cv.imshow('Select Frame', concatFrame.astype(np.uint8))
 
         cv.namedWindow('Background')
-        cv.imshow('Background', self.background[0,:,:,:])
+        cv.imshow('Background', np.zeros(image.shape))
         key = -1
         while key == -1:
-            cv.waitKey()
+            key = cv.waitKey()
         self.background = np.round(np.nanmedian(self.background, axis=0)).astype(np.uint8)
         cv.destroyWindow('Select Frame')
         cv.destroyWindow('Background')
@@ -192,14 +203,15 @@ class RobotRatRolling():
         # For Robot, zoom!
         zoom_position = cv.selectROI('Select Robot', image)
         cv.destroyWindow('Select Robot')
-        self.getColorRange(cv.resize(image[
+
+        self.robot_color  = self.getColorRange(cv.resize(image[
             zoom_position[1]:zoom_position[1] + zoom_position[3],
             zoom_position[0]:zoom_position[0] + zoom_position[2],
-            :], [zoom_position[3] * 3, zoom_position[2] * 3]))
+            :], [zoom_position[3] * 3, zoom_position[2] * 3]), std=1.5)
 
         # For Rat
-        image = cv.absdiff(image, self.medianFrame)
         self.rat_color = self.getColorRange(image)
+
     def getKernel(self, size):
         size = int(size)
         return cv.getStructuringElement(cv.MORPH_ELLIPSE, (size, size),
@@ -215,18 +227,10 @@ class RobotRatRolling():
         denoisedBinaryImage = cv.morphologyEx(denoisedBinaryImage, cv.MORPH_ERODE, self.getKernel(3))
         return denoisedBinaryImage
 
-    def getColorRange(self, image):
+    def getColorRange(self, image, std=1):
         mask = self.paintROI(image)
-        lower_end = np.round(
-            np.mean(image[mask,:],axis=0)
-            - np.std(image[mask, :], axis=0)
-        ).astype(np.uint8)
-
-        higher_end = lower_end = np.round(
-            np.mean(image[mask,:],axis=0)
-            + np.std(image[mask, :], axis=0)
-        ).astype(np.uint8)
-
+        lower_end = np.max([[0, 0, 0], np.round(np.mean(image[mask,:],axis=0) - std*np.std(image[mask, :], axis=0))], axis=0).astype(np.uint8)
+        higher_end = np.min([[255, 255, 255], np.round(np.mean(image[mask,:],axis=0) + std*np.std(image[mask, :], axis=0))], axis=0).astype(np.uint8)
         return (lower_end, higher_end)
 
     def __findBlob(self, image, prevPoint=None):
@@ -245,14 +249,17 @@ class RobotRatRolling():
         For the rat, find the white spot, use maximum likelihood method (incl. distance), 
         """
 
+        foregroundMask = \
+            cv.threshold(cv.cvtColor(cv.absdiff(image, self.background), cv.COLOR_RGB2GRAY), 30, 255, cv.THRESH_BINARY)[1]
+
+        image = cv.bitwise_and(image, image, mask=foregroundMask)
+
         ########################################################
         #                Find Robot Blob                       #
         ########################################################
 
         # 1. Find robot by color (yellow)
-
         robot_mask = cv.inRange(image, self.robot_color[0], self.robot_color[1])
-
         robot_image = cv.bitwise_and(image, image, mask=robot_mask)
         robot_gray = cv.cvtColor(robot_image, cv.COLOR_RGB2GRAY)
         robot_binary = cv.threshold(robot_gray, 50, 255, cv.THRESH_BINARY)[1]
@@ -270,23 +277,16 @@ class RobotRatRolling():
             largestContourIndex = np.argsort(np.array([cv.contourArea(cnt) for cnt in cnts]))[-1:(-1-3):-1]
             largestContours = [cnts[i] for i in largestContourIndex]
 
-            if cv.contourArea(largestContours[0]) > 40:
-                robot_center = np.round(cv.minEnclosingCircle(largestContours[0])[0]).astype(int)
-                # drawImage = cv.circle(drawImage, rat_center, 30, (0, 255, 0), 3)
+            # Get Median value
+            centers = []
+            for cnt in largestContours:
+                if cv.contourArea(cnt) > ROBOT_SIZE_THRESHOLD:
+                    centers.append(np.round(cv.minEnclosingCircle(cnt)[0]))
+            if len(centers) > 0:
+                robot_center = np.median(centers, axis=0).astype(int)
             else:
                 robot_center = prevPoint[0]
                 errorFlag = True
-
-
-            # centers = []
-            # for cnt in largestContours:
-            #     if cv.contourArea(cnt) > ROBOT_SIZE_THRESHOLD:
-            #         centers.append(np.round(cv.minEnclosingCircle(cnt)[0]))
-            # if len(centers) > 0:
-            #     robot_center = np.mean(centers, axis=0).astype(int)
-            # else:
-            #     robot_center = prevPoint[0]
-            #     errorFlag = True
         else:
             robot_center = prevPoint[0]
             errorFlag = True
@@ -298,8 +298,6 @@ class RobotRatRolling():
         ########################################################
 
         # 1. Find rat by color (white)
-        # Make Diff
-        image = cv.absdiff(image, self.medianFrame)
         rat_mask = cv.inRange(image, self.rat_color[0], self.rat_color[1])
 
         rat_image = cv.bitwise_and(image, image, mask=rat_mask)
@@ -312,48 +310,8 @@ class RobotRatRolling():
         cnts = cv.findContours(rat_denoise, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)[0]
         if len(cnts) > 0:
             largestContourIndex = np.argsort(np.array([cv.contourArea(cnt) for cnt in cnts]))[-1:(-1 - 3):-1]
-            largestContours = [cnts[i] for i in largestContourIndex]
-
-            centers = np.array([np.round(cv.minEnclosingCircle(cnt)[0]).astype(int) for cnt in largestContours])
-            area = np.array([cv.contourArea(cnt) for cnt in largestContours])
-            perimeter = np.array([cv.arcLength(cnt, closed=True) for cnt in largestContours])
-
-            animalSize = area
-            animalConvexity = area / np.array([cv.contourArea(cv.convexHull(cnt)) for cnt in largestContours])
-            animalCircularity = 4 * np.pi * area / (perimeter ** 2)
-
-            foregroundModel = {
-                'animalSize': {'median': 2048.25, 'sd': 445.6631035603015},
-                'animalConvexity': {'median': 0.8701496520482979, 'sd': 0.15930511168478506},
-                'animalCircularity': {'median': 0.4652859512418821, 'sd': 0.12903703356433005}
-            }
-
-            L_Size = np.max([
-                norm.cdf(animalSize + foregroundModel['animalSize']['sd'] * 0.1,
-                         foregroundModel['animalSize']['median'], foregroundModel['animalSize']['sd'])
-                - norm.cdf(animalSize - foregroundModel['animalSize']['sd'] * 0.1,
-                           foregroundModel['animalSize']['median'], foregroundModel['animalSize']['sd']),
-                1e-10 * np.ones(animalSize.shape)], axis=0)
-            L_Convexity = np.max([
-                norm.cdf(animalConvexity + foregroundModel['animalConvexity']['sd'] * 0.1,
-                         foregroundModel['animalConvexity']['median'],
-                         foregroundModel['animalConvexity']['sd'])
-                - norm.cdf(animalConvexity - foregroundModel['animalConvexity']['sd'] * 0.1,
-                           foregroundModel['animalConvexity']['median'],
-                           foregroundModel['animalConvexity']['sd']),
-                1e-10 * np.ones(animalConvexity.shape)], axis=0)
-            L_Circularity = np.max([
-                norm.cdf(animalCircularity + foregroundModel['animalCircularity']['sd'] * 0.1,
-                         foregroundModel['animalCircularity']['median'],
-                         foregroundModel['animalCircularity']['sd'])
-                - norm.cdf(animalCircularity - foregroundModel['animalCircularity']['sd'] * 0.1,
-                           foregroundModel['animalCircularity']['median'],
-                           foregroundModel['animalCircularity']['sd']),
-                1e-10 * np.ones(animalCircularity.shape)], axis=0)
-
-            likelihoods = np.log(L_Size) + np.log(L_Convexity) + np.log(L_Circularity)
-
-            rat_center = centers[np.argmax(likelihoods)]
+            sizeSortedContours = [cnts[i] for i in largestContourIndex]
+            rat_center = np.round(cv.minEnclosingCircle(sizeSortedContours[0])[0]).astype(int)
 
         else:
             rat_center = prevPoint[1]
