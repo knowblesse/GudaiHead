@@ -19,6 +19,7 @@ class RobotRatRolling():
         else:
             self.video_path = Path(askopenfilename())
         self.vc = cv.VideoCapture(str(self.video_path.absolute()))
+        print(f"Video Path : {self.video_path}")
 
         # Get Video infor
         self.num_frame = self.vc.get(cv.CAP_PROP_FRAME_COUNT)

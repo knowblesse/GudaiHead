@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Constants
 TANK_PATH = Path(askdirectory())
-
+print(f"Video Path : {TANK_PATH}")
 # Find the path to the video
 vidlist = []
 vidlist.extend([i for i in TANK_PATH.glob('*.mkv')])
