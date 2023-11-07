@@ -124,16 +124,23 @@ void loop()
   uint8_t buffer[8];
   if(mySerial.available())
   {
+    
     temp = mySerial.read(); // read first two byte and confirm 0xFF
+    Serial.print("*");
+    Serial.print(temp, HEX);
+    Serial.print(" | ");
+    Serial.println(temp);
+
     if(temp == 0xFF)
     {
       while(!mySerial.available()){}
       temp = mySerial.read();
-      if(temp == 0xFF)
+      if(temp == 0xFE)
       {
+
         mySerial.readBytes(buffer, 8);
         
-        if(buffer[6] == 0xFF & buffer[7] == 0xFF) // read last two byte and confirm 0xFF
+        if(buffer[6] == 0xFD & buffer[7] == 0xFB) // read last two byte and confirm 0xFF
         {
           // intact signal received.
           lastSerialTime = millis();
@@ -189,5 +196,6 @@ void loop()
   if (lastSerialTime + timeout < millis())
   {
       setSpeed(0);
+
   } 
 }
