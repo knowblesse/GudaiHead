@@ -228,14 +228,16 @@ for session = 1 : 10
         end
 
         %% isViewing
-        ratViewRange = ratHeadDegree + [-30, + 30];
+        ratViewRange = ratHeadDegree + [-62, + 62];
         fromRatToRobot = robotPosition - ratPosition;
         isViewing = false(size(ratPosition,1),1);
         isViewTotalCount = 0;
+        vr = VideoReader(glob(folderPath, '.*.mkv', true));
         for pIdx = 1 : size(ratPosition,1)
             if false % [DEBUG] show direction plot
-                figure();
-                imshow(apparatus.image(:,:,:,1));
+                clf;
+                im = vr.read(timestamp_event(pIdx)*FPS+1);
+                imshow(im);
                 hold on;
                 scatter(ratPosition(pIdx,1), ratPosition(pIdx,2), 'filled', 'g');
                 plot(...
@@ -248,30 +250,27 @@ for session = 1 : 10
                 title(string(duration(seconds(timestamp_event(pIdx)), 'Format', 'mm:ss')));
             end
 
-            if btwDistance(pIdx) >= 1
-                isViewTotalCount = isViewTotalCount + 1;
-                relativeRobotAngle = atan2d(fromRatToRobot(pIdx, 2), fromRatToRobot(pIdx, 1));
-                if relativeRobotAngle < 0
-                    relativeRobotAngle = relativeRobotAngle + 360;
-                end
-            
-                if relativeRobotAngle > ratViewRange(pIdx, 2)
-                    if relativeRobotAngle > ratViewRange(pIdx, 1) + 360
-                        inFOV = true;
-                    else
-                        inFOV = false;
-                    end
+            isViewTotalCount = isViewTotalCount + 1;
+            relativeRobotAngle = atan2d(fromRatToRobot(pIdx, 2), fromRatToRobot(pIdx, 1));
+            if relativeRobotAngle < 0
+                relativeRobotAngle = relativeRobotAngle + 360;
+            end
+        
+            if relativeRobotAngle > ratViewRange(pIdx, 2)
+                if relativeRobotAngle > ratViewRange(pIdx, 1) + 360
+                    inFOV = true;
                 else
-                    if relativeRobotAngle > ratViewRange(pIdx, 1)
-                        inFOV = true;
-                    else
-                        inFOV = false;
-                    end
+                    inFOV = false;
                 end
-
-                isViewing(pIdx) = inFOV;
+            else
+                if relativeRobotAngle > ratViewRange(pIdx, 1)
+                    inFOV = true;
+                else
+                    inFOV = false;
+                end
             end
 
+            isViewing(pIdx) = inFOV;
         end
 
         out_view_ratio(session, i) = sum(isViewing) / isViewTotalCount;

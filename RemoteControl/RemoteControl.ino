@@ -1,7 +1,7 @@
 #include <SoftwareSerial.h>
 
-#define PIN_X A1
-#define PIN_Y A0
+#define PIN_X A0
+#define PIN_Y A1
 #define PIN_Z A2
 
 SoftwareSerial btModule(5, 6);
@@ -35,11 +35,11 @@ void loop()
   btModule.write(0xFD);
   btModule.write(0xFB);
   
-  // Serial.print(x);
-  // Serial.print(",");
-  // Serial.print(y);
-  // Serial.print(",");
-  // Serial.println(z);
+  Serial.print(x);
+  Serial.print(",");
+  Serial.print(y);
+  Serial.print(",");
+  Serial.println(z);
   delay(60);
 }
 
