@@ -27,6 +27,7 @@ class RobotRatRolling():
         self.frame_height = int(self.vc.get(cv.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.vc.get(cv.CAP_PROP_FRAME_WIDTH))
         self.frame_size = (self.frame_height, self.frame_width)
+        self.early_stop = False
         #self.setGlobalMask()
 
         self.isPaintROIOpen = False
@@ -335,7 +336,7 @@ class RobotRatRolling():
 
         for idx in tqdm(range(int(np.ceil(self.num_frame / stride)))):
             try:
-                frame_number, blob_centers = self.blobQ.get()
+                frame_number, blob_centers = self.blobQ.get(timeout=10)
             except queue.Empty:
                 print(f'Can not get frame from index {idx} of {int(np.ceil(self.num_frame / stride)) - 1}')
                 self.output_data = self.output_data[:idx, :]
@@ -382,6 +383,7 @@ class RobotRatRolling():
                 if ret == False:
                     # This is the end of the frame. num_frame is wrong!
                     print(f'Wrong number of numframe. {self.cur_header} frame does not exist!')
+                    self.early_stop = True
                     break
                 frame = cv.bitwise_and(frame, frame, mask=self.global_mask)
                 self.frameQ.put((self.cur_header, frame))
@@ -405,8 +407,6 @@ class RobotRatRolling():
         while not(self.frameQ.empty()) or self.vcIOthread.is_alive():
             if not self.blobQ.full():
                 frame_number, image = self.frameQ.get()
-                if frame_number == 45240:
-                    print('a')
                 detected_blob_centers = self.__findBlob(image, prevPoint=self.prevPoint)
                 self.blobQ.put((frame_number, detected_blob_centers))
                 if detected_blob_centers is not None:
@@ -429,12 +429,12 @@ class RobotRatRolling():
 
 if __name__ == "__main__":
     rrr = RobotRatRolling()
-    rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
-    rrr.global_mask[150:150 + 800, 335:335 + 1185] = 255
+    rrr.global_mask = np.ones(rrr.frame_size, dtype=np.uint8)
+    #rrr.global_mask = np.zeros(rrr.frame_size, dtype=np.uint8)
+    #rrr.global_mask[80:150 + 800, 235:335 + 1185] = 255
     rrr.getMedianFrame()
     rrr.selectColors()
     rrr.run(12)
     rrr.save()
-    kn = teleknock.teleknock()
-    kn.sendMsg("DONE")
+    teleknock.knock("Done")
 
